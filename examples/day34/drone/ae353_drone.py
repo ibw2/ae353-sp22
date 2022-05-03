@@ -37,11 +37,10 @@ class Simulator:
         # Whether or not to error on controller print or timeout
         self.error_on_print = True
         self.error_on_timeout = True
-        self.max_controller_run_time=1e-2
+        self.max_controller_run_time=5e-3
         self.max_controller_reset_time=1e0
         self.max_controller_init_time=1e0
         self.max_controller_load_time=5e0
-        self.max_run_time_violations=10
 
         # Create empty list of drones
         self.drones = []
@@ -516,8 +515,6 @@ class Simulator:
             drone['finish_time'] = None
             # Still running
             drone['running'] = True
-            # Number of run time violations
-            drone['num_run_time_violations'] = 0
             # Initialize controller
             try:
                 pos_meas = pos + self.pos_noise * self.rng.standard_normal(3)
@@ -602,6 +599,7 @@ class Simulator:
             drone['cur_ring'] += 1
         if drone['cur_ring'] == len(self.rings):
             drone['finish_time'] = self.t
+            print(f'FINISHED: drone "{drone["name"]}" at time {drone["finish_time"]:.2f}')
             return True
         else:
             return False
@@ -638,7 +636,7 @@ class Simulator:
             w.append_data(rgba)
 
         while True:
-            all_done = self.step(contestview=contestview, print_debug=print_debug)
+            all_done = self.step(contestview=contestview)
 
             if video_filename is not None:
                 if self.time_step % 100 == 0:
@@ -712,7 +710,7 @@ class Simulator:
         return failed, finished, finish_time
 
 
-    def step(self, contestview=False, print_debug=False):
+    def step(self, contestview=False):
         """
         does one step in the simulation
         """
@@ -735,8 +733,6 @@ class Simulator:
 
             # check if the drone has just now finished, and if so ignore it
             if self.check_ring(drone):
-                if print_debug:
-                    print(f'FINISHED: drone "{drone["name"]}" at time {drone["finish_time"]:.2f}')
                 drone['running'] = False
                 continue
 
@@ -791,10 +787,8 @@ class Simulator:
                         np.delete(all_pos, index, axis=0),
                     )
                 controller_run_time = time.time() - controller_start_time
-                if (controller_run_time > self.max_controller_run_time):
-                    drone['num_run_time_violations'] += 1
-                if (drone['num_run_time_violations'] >= self.max_run_time_violations) and self.error_on_timeout:
-                    raise Exception(f'Maximum run time of {self.max_controller_run_time} was exceeded on {self.max_run_time_violations} occasions')
+                if (controller_run_time > self.max_controller_run_time) and self.error_on_timeout:
+                    raise Exception(f'Run timeout exceeded: {controller_run_time} > {self.max_controller_run_time}')
 
                 (
                     tau_x,
@@ -868,6 +862,7 @@ class Simulator:
                     if not np.isscalar(val):
                         val = val.flatten().tolist()
                     data[key].append(val)
+
             except Exception as err:
                 print(f'\n==========\nerror logging data for drone {drone["name"]} (turning it off):\n==========\n{traceback.format_exc()}==========\n')
                 drone['running'] = False
